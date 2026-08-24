@@ -1,0 +1,39 @@
+{
+  "name": "mtg-collection-deckbuilder",
+  "version": "0.1.0",
+  "description": "AI-assisted Magic: The Gathering deckbuilder using only owned cards",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "keywords": [
+    "mtg",
+    "magic",
+    "deckbuilding",
+    "scryfall",
+    "card-collection"
+  ],
+  "license": "MIT-0",
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.0"
+  },
+  "dependencies": {
+    "csv-parse": "^5.5.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^3.24.0",
+    "zustand": "^5.0.15"
+  }
+}
