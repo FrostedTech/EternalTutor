@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { parseCollectionCsv } from '../lib/parsers';
+import { parseCollectionCsv, parseCollectionText, detectTextFormat, getFormatDescription } from '../lib/parsers';
 import { useCollectionStore } from '../lib/state/collection-store';
 
 const CollectionUploader: React.FC = () => {
@@ -7,11 +7,11 @@ const CollectionUploader: React.FC = () => {
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showTextPaste, setShowTextPaste] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const csvText = event.target?.result as string;
@@ -22,7 +22,7 @@ const CollectionUploader: React.FC = () => {
       setIsParsing(false);
     };
     reader.readAsText(file);
-    
+
     // Reset file input to allow re-selecting the same file
     e.target.value = '';
   };
@@ -40,36 +40,49 @@ const CollectionUploader: React.FC = () => {
     }
   };
 
-  const parseCollection = (csvText: string) => {
+  const parseCollection = (text: string) => {
     setIsParsing(true);
     setParseError(null);
     setSuccessMessage(null);
 
-    try {
-      const result = parseCollectionCsv(csvText);
-      
-      if (result.errors.length > 0) {
-        // Show warnings but still process valid items
-        console.warn('Parse errors:', result.errors);
-        setParseError('Parsed with ' + result.errors.length + ' warnings. Check console for details.');
+    // Auto-detect format
+    const lines = text.split('\n');
+    const format = detectTextFormat(lines);
+
+    let result: any;
+
+    if (format === 'csv' || /,/.test(text.substring(0, 50) && text.split('\n').length > 1)) {
+      // Try CSV parsing
+      try {
+        result = parseCollectionCsv(text);
+      } catch (e) {
+        // Fall back to text parsing
+        result = parseCollectionText(text);
       }
-      
-      setCollection(result.items);
-      setSuccessMessage('Successfully imported ' + result.items.length + ' cards!');
-    } catch (error) {
-      setParseError(
-        error instanceof Error 
-          ? error.message 
-          : 'An unknown error occurred while parsing the CSV'
-      );
-    } finally {
-      setIsParsing(false);
+    } else {
+      // Use text/decklist parser
+      try {
+        result = parseCollectionText(text);
+      } catch (e) {
+        // Fall back to CSV if text parsing fails
+        result = parseCollectionCsv(text);
+      }
     }
+
+    if (result.errors.length > 0) {
+      // Show warnings but still process valid items
+      console.warn('Parse errors:', result.errors);
+      setParseError('Parsed with ' + result.errors.length + ' warnings. Check console for details.');
+    }
+
+    setCollection(result.items);
+    setSuccessMessage('Successfully imported ' + result.items.length + ' cards!');
+    setShowTextPaste(false);
   };
 
   return (
     <div className="space-y-4">
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors"
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors md:p-8"
            onDragOver={(e) => e.preventDefault()}
            onDragLeave={(e) => e.preventDefault()}
            onDrop={(e) => {
@@ -88,39 +101,45 @@ const CollectionUploader: React.FC = () => {
                reader.readAsText(file);
              }
            }}
-      >
+        >
         <div className="space-y-3">
           {!isParsing ? (
             <>
               <p className="text-gray-500">
-                Drag & drop your MTG collection CSV here, or
+                {'{'}Drag & drop your MTG collection CSV here, or{'}'}{' '}
+                <button
+                  type="button"
+                  onClick={handleBrowseClick}
+                  className="btn-primary"
+                >
+                  Browse Files
+                </button>{' '}
+                {'{'}or{'}'}{' '}
+                <button
+                  type="button"
+                  onClick={() => setShowTextPaste(true)}
+                  className="text-primary hover:underline"
+                >
+                  Paste Text
+                </button>
               </p>
-              <button 
-                type="button" 
-                onClick={handleBrowseClick}
-                className="btn-primary"
-              >
-                Browse Files
-              </button>
-              <input 
-                type="file" 
+              <input
+                type="file"
                 id="file-input"
                 accept=".csv,.txt"
                 className="hidden"
                 onChange={handleFileChange}
               />
               <p className="text-sm text-gray-400">
-                or paste CSV/text below
+                Supported formats: CSV files or paste decklist text ({'}'}{' '}
+                <code className="text-xs font-mono bg-gray-100 rounded px-1">
+                  {getFormatDescription('decklist')}
+                </code>{' '}{'{'}'}{' '}
+                <code className="text-xs font-mono bg-gray-100 rounded px-1">
+                  {getFormatDescription('csv')}
+                </code>{' '}{'{'}'}{' '}
+                'or'
               </p>
-              <div 
-                className="mt-2 p-3 border border-gray-200 rounded min-h-[80px] flex items-center justify-center text-gray-400"
-                onPaste={handlePaste}
-                contentEditable
-                suppressContentEditableWarning
-                style={{ outline: 'none' }}
-              >
-                Paste CSV data here...
-              </div>
             </>
           ) : (
             <>
@@ -131,38 +150,70 @@ const CollectionUploader: React.FC = () => {
             </>
           )}
         </div>
-        
-        {parseError && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded">
-            <p className="text-red-700">{parseError}</p>
-          </div>
-        )}
-        
-        {successMessage && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded">
-            <p className="text-green-700">{successMessage}</p>
-          </div>
-        )}
-        
-        {collection.length > 0 && !isParsing && (
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-600">
-              {collection.length} cards loaded
-            </p>
-            <button 
-              type="button" 
-              onClick={() => {
-                resetCollection();
-                setSuccessMessage(null);
-                setParseError(null);
-              }}
-              className="btn-secondary"
-            >
-              Clear Collection
-            </button>
-          </div>
-        )}
       </div>
+
+      {showTextPaste && (
+        <div className="mt-4 p-4 border rounded-lg" style={{ borderColor: '#3b82f6' }}>
+          <p className="text-sm text-gray-600 mb-2">
+            Paste your collection or decklist text below. Supported formats:
+          </p>
+          <textarea
+            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-primary transition-colors h-40 resize-y"
+            onPaste={(e) => {
+              e.preventDefault();
+              const text = e.clipboardData.getData('text');
+              if (text.trim()) {
+                parseCollection(text);
+              }
+            }}
+          >
+            Paste CSV data or decklist here (e.g., '4 Lightning Bolt M21 123')...\
+          </textarea>
+          <p className="text-xs text-gray-500 mt-2">
+            {'{'}'}{' '}
+            <code className="text-xs font-mono bg-gray-100 rounded px-1">
+              {getFormatDescription('decklist')}
+            </code>{' '}{'{'}'}{' '}
+            and{' '}
+            <code className="text-xs font-mono bg-gray-100 rounded px-1">
+              {getFormatDescription('csv')}
+            </code>{' '}{'{'}'}{' '}
+            {'{'}'}{' '}
+            (or upload a CSV file)
+          </p>
+        </div>
+      )}
+
+      {parseError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded">
+          <p className="text-red-700">{parseError}</p>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded">
+          <p className="text-green-700">{successMessage}</p>
+        </div>
+      )}
+
+      {collection.length > 0 && !isParsing && (
+        <div className="flex justify-between items-center">
+          <p className="text-sm text-gray-600">
+            {collection.length} cards loaded
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              resetCollection();
+              setSuccessMessage(null);
+              setParseError(null);
+            }}
+            className="btn-secondary"
+          >
+            Clear Collection
+          </button>
+        </div>
+      )}
     </div>
   );
 };
